@@ -1,6 +1,9 @@
 package toolkit
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -211,6 +214,108 @@ func TestTools_DownloadStaticFile(t *testing.T) {
 	_, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		t.Errorf("Error reading response body: %v", err)
+	}
+
+}
+
+var jsonTests = []struct {
+	name          string
+	json          string
+	errorExpected bool
+	maxSize       int64
+	allowUnknown  bool
+}{
+	{name: "good json", json: `{"name": "John", "age": 30, "city": "New York"}`, errorExpected: false, maxSize: 1024, allowUnknown: false},
+	{name: "bad json", json: `{"name": "John", "age": 30, "city": "New York"`, errorExpected: true, maxSize: 1024, allowUnknown: false},
+	{name: "json with unknown fields", json: `{"name": "John", "age": 30, "city": "New York", "country": "USA"}`, errorExpected: true, maxSize: 1024, allowUnknown: false},
+	{name: "json with unknown fields allowed", json: `{"name": "John", "age": 30, "city": "New York", "country": "USA"}`, errorExpected: false, maxSize: 1024, allowUnknown: true},
+	{name: "json with max size", json: `{"name": "John", "age": 30, "city": "New York", "country": "USA"}`, errorExpected: true, maxSize: 10, allowUnknown: false},
+	{name: "incorrect type", json: `{"name": 30, "age": 30, "city": "New York"}`, errorExpected: true, maxSize: 1024, allowUnknown: false},
+	{name: "empty body", json: ``, errorExpected: true, maxSize: 1024, allowUnknown: false},
+	{name: "two json file", json: `{"name": "John", "age": 30, "city": "New York"}{"name": "John", "age": 30, "city": "New York"}`, errorExpected: true, maxSize: 1024, allowUnknown: false},
+	{name: "not json", json: `this is not json`, errorExpected: true, maxSize: 1024, allowUnknown: false},
+}
+
+func TestTools_ReadJSON(t *testing.T) {
+	var testTools Tools
+	for _, e := range jsonTests {
+		// set the max file size
+		testTools.MaxJSONSize = e.maxSize
+
+		// allow/disallow unknown fields
+		testTools.AllowUnknownFields = e.allowUnknown
+
+		// declare a var to read decoded json
+		var decodedJSON struct {
+			Name string `json:"name"`
+			Age  int    `json:"age"`
+			City string `json:"city"`
+		}
+
+		// create a request with the body
+		req, err := http.NewRequest("POST", "/", bytes.NewReader([]byte(e.json)))
+		if err != nil {
+			t.Log("Error:", err)
+		}
+
+		// create a recorder
+		rr := httptest.NewRecorder()
+		err = testTools.ReadJSON(rr, req, &decodedJSON)
+		if err != nil && !e.errorExpected {
+			t.Errorf("%s: Error reading json: %v", e.name, err)
+		}
+
+		if !e.errorExpected && err != nil {
+			t.Errorf("%s: Error reading json: %v", e.name, err)
+		}
+
+		req.Body.Close()
+
+	}
+}
+
+func TestTools_WriteJson(t *testing.T) {
+	var testTools Tools
+
+	rr := httptest.NewRecorder()
+	payload := JSONResponse{
+		Error:   false,
+		Message: "test",
+	}
+	headers := make(http.Header)
+	headers.Add("FOO", "BAR")
+
+	err := testTools.WriteJSON(rr, payload, http.StatusOK, headers)
+
+	if err != nil {
+		t.Errorf("Error writing json: %v", err)
+	}
+}
+
+func TestTools_ErrorJSON(t *testing.T) {
+	var testTools Tools
+
+	rr := httptest.NewRecorder()
+
+	err := testTools.ErrorJSON(rr, errors.New("Some error"), http.StatusInternalServerError)
+
+	if err != nil {
+		t.Errorf("Error writing json: %v", err)
+	}
+
+	var payload JSONResponse
+	decoder := json.NewDecoder(rr.Body)
+	err = decoder.Decode(&payload)
+	if err != nil {
+		t.Errorf("Error decoding json: %v", err)
+	}
+
+	if !payload.Error {
+		t.Errorf("Error field not set to true")
+	}
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("Status code not set to 500")
 	}
 
 }
