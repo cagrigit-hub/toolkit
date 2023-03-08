@@ -5,7 +5,9 @@ import (
 	"image"
 	"image/png"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"sync"
@@ -185,4 +187,30 @@ func TestTools_Slugify(t *testing.T) {
 			t.Errorf("%s: Slug not as expected: %s", e.name, slug)
 		}
 	}
+}
+
+func TestTools_DownloadStaticFile(t *testing.T) {
+	rr := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/", nil)
+
+	var testTools Tools
+
+	testTools.DownloadStaticFile(rr, req, "./testdata", "foto.png", "foti.png")
+
+	res := rr.Result()
+	defer res.Body.Close()
+
+	if res.Header["Content-Length"][0] != "1742391" {
+		t.Errorf("Content-Length not as expected: %s", res.Header["Content-Length"][0])
+	}
+
+	if res.Header["Content-Disposition"][0] != "attachment; filename=\"foti.png\"" {
+		t.Errorf("Content-Disposition not as expected: %s", res.Header["Content-Disposition"][0])
+	}
+
+	_, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Errorf("Error reading response body: %v", err)
+	}
+
 }
