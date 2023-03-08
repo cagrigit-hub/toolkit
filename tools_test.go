@@ -157,3 +157,32 @@ func TestTools_CreateDirIfNotExists(t *testing.T) {
 	}
 	_ = os.Remove("./testdata/myDir")
 }
+
+var slugTests = []struct {
+	name          string
+	s             string
+	expected      string
+	errorExpected bool
+}{
+	{name: "valid string", s: "This is a valid string", expected: "this-is-a-valid-string", errorExpected: false},
+	{name: "empty string", s: "", expected: "", errorExpected: true},
+	{name: "string with numbers", s: "This is a valid string 123", expected: "this-is-a-valid-string-123", errorExpected: false},
+	{name: "string with characters", s: "Th*İSs *eĞcspeCtDe!", expected: "th-iss-e-cspectde", errorExpected: false},
+	{name: "japanese string", s: "これは日本語の文字列です", expected: "", errorExpected: true},
+	{name: "japanese chars with roman characters", s: "これは日本語の文字列ですhello world", expected: "hello-world", errorExpected: true},
+}
+
+func TestTools_Slugify(t *testing.T) {
+	for _, e := range slugTests {
+		var testTools Tools
+
+		slug, err := testTools.Slugify(e.s)
+		if err != nil && !e.errorExpected {
+			t.Errorf("%s: Error slugifying string: %v", e.name, err)
+		}
+
+		if slug != e.expected {
+			t.Errorf("%s: Slug not as expected: %s", e.name, slug)
+		}
+	}
+}
